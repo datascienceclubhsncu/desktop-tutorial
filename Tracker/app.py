@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load your CSV file
-df = pd.read_csv(r"C:\Users\shreay\OneDrive\Desktop\Stocks\master_data.csv")
+df = pd.read_csv(r"Tracker/master_data.csv")
 
 
 # Enforcing data types
