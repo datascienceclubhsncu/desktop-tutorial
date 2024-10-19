@@ -2,4 +2,5 @@ streamlit
 pandas
 matplotlib
 yfinance
-statsmodels.tsa.arima.model
+statsmodels
+plotly.express
