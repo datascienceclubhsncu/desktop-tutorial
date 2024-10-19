@@ -1,117 +1,79 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
+import pandas as pd
 import matplotlib.pyplot as plt
 
-# Load your CSV file
-df = pd.read_csv(r"Tracker/master_data.csv")
-
-# Enforcing data types
-df['LTP'] = df['LTP'].astype(float)
+# List of stock tickers
+tickers = ['RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HDFCBANK.NS', 'LT.NS', 'TATAMOTORS.NS', 
+           'LTIM.NS', 'M&M.NS', 'MARUTI.NS', 'TITAN.NS', 'WIPRO.NS', 'ICICIBANK.NS', 
+           'SBIN.NS', 'HINDUNILVR.NS', 'ITC.NS', 'BAJFINANCE.NS', 'KOTAKBANK.NS', 
+           'ADANIENT.NS', 'ASIANPAINT.NS', 'CIPLA.NS']
 
 # Initialize portfolio in session_state if it doesn't exist
 if 'portfolio_df' not in st.session_state:
     st.session_state.portfolio_df = pd.DataFrame(columns=['Stock', 'Quantity', 'Total Price', 'Size', 'Sector', 'Percentage'])
 
-# Sidebar: Select Size and Sub-Size
-selected_size = st.sidebar.selectbox('Select Size:', ['Large-Cap', 'Mid-Cap', 'Small-Cap'])
-selected_subsize = st.sidebar.selectbox('Select Sub-Size:', ['All', 'PSU', 'TATA', 'ADANI'])
+# Function to fetch stock data from Yahoo Finance
+def fetch_stock_data(ticker):
+    stock_data = yf.Ticker(ticker)
+    hist = stock_data.history(period="5y")  # Fetch 5 years of data
+    return hist
 
-# Filter stocks based on the selected size and sub-size
-if selected_subsize == 'All':
-    filtered_stocks = df[df['Size'] == selected_size]['SYMBOL'].tolist()
-else:
-    filtered_stocks = df[(df['Size'] == selected_size) & (df['Sub-Size'] == selected_subsize)]['SYMBOL'].tolist()
-
-# Dropdown to select stock
-selected_stock = st.sidebar.selectbox('Select Stock:', filtered_stocks)
-
-# Quantity input
+# Sidebar: Select stock and enter quantity
+selected_stock = st.sidebar.selectbox('Select Stock:', tickers)
 quantity = st.sidebar.number_input('Enter Quantity:', min_value=1, value=1)
 
 # Add button
 if st.sidebar.button('Add to Portfolio'):
     if selected_stock:
-        # Get the LTP (Last Traded Price) from the CSV data
-        ltp = df[df['SYMBOL'] == selected_stock]['LTP'].values[0]  # Get LTP for selected stock
+        stock_data = fetch_stock_data(selected_stock)
+        ltp = stock_data['Close'].iloc[-1]  # Last traded price from Yahoo Finance
         
-        if ltp is not None:
+        if ltp:
             total_price = ltp * quantity
-            stock_size = df[df['SYMBOL'] == selected_stock]['Size'].values[0]
-            stock_sector = df[df['SYMBOL'] == selected_stock]['Sector'].values[0]
+            stock_name = selected_stock.split('.')[0]
             
-            # Check if the stock is already in the portfolio
-            if selected_stock in st.session_state.portfolio_df['Stock'].values:
-                index = st.session_state.portfolio_df[st.session_state.portfolio_df['Stock'] == selected_stock].index[0]
+            # Check if stock is already in the portfolio
+            if stock_name in st.session_state.portfolio_df['Stock'].values:
+                index = st.session_state.portfolio_df[st.session_state.portfolio_df['Stock'] == stock_name].index[0]
                 st.session_state.portfolio_df.at[index, 'Quantity'] += quantity
                 st.session_state.portfolio_df.at[index, 'Total Price'] += total_price
             else:
-                # Create a new row for the stock
+                # Create new row
                 new_row = pd.DataFrame({
-                    'Stock': [selected_stock],
+                    'Stock': [stock_name],
                     'Quantity': [quantity],
                     'Total Price': [total_price],
-                    'Size': [stock_size],
-                    'Sector': [stock_sector],
+                    'Size': ['Large-Cap'],  # Size can be modified according to logic
+                    'Sector': ['Unknown'],  # You can map sectors if needed
                     'Percentage': [0.0]
                 })
                 
-                # Use pd.concat to add the new row to portfolio_df in session_state
+                # Add new row to portfolio
                 st.session_state.portfolio_df = pd.concat([st.session_state.portfolio_df, new_row], ignore_index=True)
             
-            # Recalculate percentage of total portfolio
+            # Recalculate percentages
             portfolio_value = st.session_state.portfolio_df['Total Price'].sum()
-            if portfolio_value > 0:
-                st.session_state.portfolio_df['Percentage'] = (st.session_state.portfolio_df['Total Price'] / portfolio_value) * 100
+            st.session_state.portfolio_df['Percentage'] = (st.session_state.portfolio_df['Total Price'] / portfolio_value) * 100
             
-            st.sidebar.success(f'Added {quantity} shares of {selected_stock} to portfolio.')
+            st.sidebar.success(f'Added {quantity} shares of {stock_name} to portfolio.')
         else:
-            st.sidebar.error(f"Failed to add {selected_stock} to portfolio due to missing LTP data.")
+            st.sidebar.error(f"Failed to add {selected_stock} to portfolio due to missing data.")
 
 # Display portfolio
 st.write("### Current Portfolio")
 if st.session_state.portfolio_df.empty:
     st.write("Portfolio is empty.")
 else:
-    # Fetch historical data using yfinance
-    st.write(f"### Stock Data for {selected_stock} from 2019 to 2024")
+    st.write(st.session_state.portfolio_df[['Stock', 'Quantity', 'Total Price', 'Percentage']])
     
-    # Fetch historical data from yfinance
-    stock_data = yf.download(selected_stock, start="2019-01-01", end="2024-01-01")
-    
-    if not stock_data.empty:
-        # Plot the stock price trends
-        plt.figure(figsize=(10, 4))
-        plt.plot(stock_data['Close'], label="Close Price", color='blue')
-        plt.title(f"{selected_stock} Closing Price (2019-2024)")
-        plt.xlabel("Date")
-        plt.ylabel("Price (INR)")
-        plt.legend()
-        st.pyplot(plt)
-    else:
-        st.write(f"No historical data available for {selected_stock}.")
+    total_value = st.session_state.portfolio_df['Total Price'].sum()
+    st.write(f"**Total Portfolio Value: ₹{total_value:,.2f}**")
 
 # Display portfolio distribution pie charts
 if not st.session_state.portfolio_df.empty:
-    # Portfolio Distribution by Size
-    st.write("### Portfolio Distribution by Size")
-    size_distribution = st.session_state.portfolio_df.groupby('Size')['Total Price'].sum()
-    plt.figure(figsize=(4, 4))
-    plt.pie(size_distribution, labels=size_distribution.index, autopct='%1.1f%%', startangle=140)
-    plt.axis('equal')
-    st.pyplot(plt)
-
-    # Portfolio Distribution by Stock
     st.write("### Portfolio Distribution by Stock")
     plt.figure(figsize=(4, 4))
     plt.pie(st.session_state.portfolio_df['Total Price'], labels=st.session_state.portfolio_df['Stock'], autopct='%1.1f%%', startangle=140)
-    plt.axis('equal')
-    st.pyplot(plt)
-
-    # Portfolio Distribution by Sector
-    st.write("### Portfolio Distribution by Sector")
-    sector_distribution = st.session_state.portfolio_df.groupby('Sector')['Total Price'].sum()
-    plt.figure(figsize=(4, 4))
-    plt.pie(sector_distribution, labels=sector_distribution.index, autopct='%1.1f%%', startangle=140)
     plt.axis('equal')
     st.pyplot(plt)
